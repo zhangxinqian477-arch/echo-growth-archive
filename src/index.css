@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Echo 回响 - Digital Zen Garden Design System
+   Core: Japanese moss garden aesthetic - healing, organic, life-affirming
+   All colors in HSL format
+*/
+
+@layer base {
+  :root {
+    /* Background: Misty cream white - like morning dew on leaves */
+    --background: 100 25% 98%;
+    --foreground: 220 26% 14%;
+
+    /* Card: Soft white with hint of green */
+    --card: 100 30% 99%;
+    --card-foreground: 220 26% 14%;
+
+    /* Popover */
+    --popover: 100 30% 99%;
+    --popover-foreground: 220 26% 14%;
+
+    /* Primary: Fresh leaf green - hope and action */
+    --primary: 145 63% 49%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: Soft sage green */
+    --secondary: 141 77% 85%;
+    --secondary-foreground: 152 44% 28%;
+
+    /* Muted: Whisper green for subtle backgrounds */
+    --muted: 138 30% 94%;
+    --muted-foreground: 152 18% 45%;
+
+    /* Accent: Bright moss for highlights */
+    --accent: 141 50% 60%;
+    --accent-foreground: 152 44% 18%;
+
+    /* Destructive: Soft rust (autumn leaves, not harsh red) */
+    --destructive: 25 70% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Border & Input: Soft sage borders */
+    --border: 138 30% 88%;
+    --input: 138 30% 92%;
+    --ring: 145 63% 49%;
+
+    /* Large organic radius */
+    --radius: 1rem;
+
+    /* Mood Colors - Life states of green */
+    --mood-energy: 145 63% 49%;
+    --mood-calm: 141 77% 75%;
+    --mood-struggle: 215 18% 68%;
+    
+    /* Echo mascot glow */
+    --echo-glow: 141 77% 85%;
+  }
+
+  .dark {
+    /* Keep light theme for zen garden aesthetic */
+    --background: 100 25% 98%;
+    --foreground: 220 26% 14%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+}
+
+@layer components {
+  /* Echo bubble animation */
+  .echo-bubble {
+    @apply relative;
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-6px); }
+  }
+  
+  /* Organic card style */
+  .card-organic {
+    @apply rounded-2xl bg-card border border-border/50;
+    box-shadow: 0 4px 20px -4px hsl(var(--secondary) / 0.4);
+  }
+  
+  /* Mood pixel grid item */
+  .mood-pixel {
+    @apply w-8 h-8 rounded-lg transition-all duration-300 cursor-pointer;
+  }
+  
+  .mood-pixel:hover {
+    transform: scale(1.1);
+  }
+  
+  /* Bottom nav active indicator */
+  .nav-active {
+    @apply text-primary;
+  }
+  
+  .nav-active::after {
+    content: '';
+    @apply absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary;
+  }
+  
+  /* 隐藏滚动条 */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
