@@ -43,7 +43,7 @@ async function getChatResponse(userMessage: string, conversationHistory: Array<{
 
 3. 建议的深度与自然度：
    给出建议时，使用"或许你可以试试..."、"我之前也遇到过类似的..."这种口吻。
-   指令：建议必须结合用户具体的实习/面试场景（如智能驾驶、Figma逻辑、Vibe Coding等）。
+   指令：建议必须结合用户具体的职场或学习场景（如项目推进、技能提升、团队协作等）。
 
 4. 对话收尾：
    结尾要像老友聊天一样自然收尾，或带一个轻量级的关联问题，不再进行"审讯式"连环追问。
@@ -53,7 +53,7 @@ async function getChatResponse(userMessage: string, conversationHistory: Array<{
    逻辑连点：鼓励AI发现用户不同话语间的潜在线索。
 
 6. 实操类/建议类提问识别与回复：
-   当用户提出"如何做"、"给点建议"、"怎么提高"或涉及具体职业技能（如Figma逻辑、面试准备、数据可视化）的困惑时：
+   当用户提出"如何做"、"给点建议"、"怎么提高"或涉及具体职业技能（如项目推进、技能提升、团队协作）的困惑时：
    
    a) 先承接后拆解：首句依然保持自然温润的过渡。
    
@@ -66,11 +66,11 @@ async function getChatResponse(userMessage: string, conversationHistory: Array<{
    
    b) 如果是其他时间，正常回复即可。
    
-   c) 单点要求：每一点建议都要包含"方法论+你的具体场景"（例如："利用逻辑流转图拆解：正如你在Figma中梳理逻辑一样，你可以把售前资料的每一个层级也画出逻辑连线..."）。
+   c) 单点要求：每一点建议都要包含"方法论+你的具体场景"（例如："利用结构化思维拆解：正如你在完成市场调研报告时梳理数据一样，你可以把每个分析维度也画出逻辑连线..."）。
    
    d) 关联上下文：给建议时，必须搜索并引用用户之前提到的"闪光点"或"痛点"。
    
-   e) 范例："针对你之前提到的面试焦虑，你可以试着把今天学会的数据映射逻辑，整理成一个1-2-3的面试话术模板。"
+   e) 范例："针对你之前提到的学习焦虑，你可以试着把今天掌握的沟通技巧，整理成一个1-2-3的实战话术模板。"
    
    f) 结尾总结：说明这几点建议如何助力用户的职业档案增长，语气保持专业且有启发性。
 
@@ -82,9 +82,9 @@ async function getChatResponse(userMessage: string, conversationHistory: Array<{
    
    去抽象化：严禁出现"职业长跑"、"不确定性中消解"、"底层特质"等宏大叙事或虚无的辞藻。
    
-   具象原则：建议必须是行动导向的。比如："下次调试前先写好CheckList"，而非"要保持耐心"。
+   具象原则：建议必须是行动导向的。比如："下次开会前先准备议程清单"，而非"要保持耐心"。
    
-   严禁过分联想：不要强行把简单的技术问题联系到人生态度。如果用户只聊了代码报错，建议就仅限于代码管理或调试方法。
+   严禁过分联想：不要强行把简单的问题联系到人生态度。如果用户只聊了工作汇报，建议就仅限于沟通技巧或汇报方法。
 
 9. 格式要求：
    
@@ -419,8 +419,24 @@ export default function ChatPage() {
       // 保存回localStorage
       localStorage.setItem('echo_archives', JSON.stringify(existingArchives));
       
-      // 立即触发storage事件
-      window.dispatchEvent(new Event('storage'));
+      // 创建并触发自定义事件，确保同一页面内的组件能接收到通知
+      try {
+        const storageEvent = new StorageEvent('storage', {
+          key: 'echo_archives',
+          newValue: JSON.stringify(existingArchives),
+          oldValue: localStorage.getItem('echo_archives'),
+          storageArea: localStorage
+        });
+        window.dispatchEvent(storageEvent);
+        console.log('已触发storage事件，通知花园页面更新');
+      } catch (error) {
+        console.error('触发storage事件失败:', error);
+        // 备用方案：使用自定义事件
+        const customEvent = new CustomEvent('echo_archives_updated', {
+          detail: { archives: existingArchives }
+        });
+        window.dispatchEvent(customEvent);
+      }
       
       // 更新最后对话日期为今天，防止跨天时重复归档
       localStorage.setItem('last_conversation_date', dateString);
@@ -460,8 +476,24 @@ export default function ChatPage() {
       // 保存回localStorage
       localStorage.setItem('echo_archives', JSON.stringify(existingArchives));
       
-      // 立即触发storage事件
-      window.dispatchEvent(new Event('storage'));
+      // 创建并触发自定义事件，确保同一页面内的组件能接收到通知
+      try {
+        const storageEvent = new StorageEvent('storage', {
+          key: 'echo_archives',
+          newValue: JSON.stringify(existingArchives),
+          oldValue: localStorage.getItem('echo_archives'),
+          storageArea: localStorage
+        });
+        window.dispatchEvent(storageEvent);
+        console.log('已触发storage事件，通知花园页面更新');
+      } catch (error) {
+        console.error('触发storage事件失败:', error);
+        // 备用方案：使用自定义事件
+        const customEvent = new CustomEvent('echo_archives_updated', {
+          detail: { archives: existingArchives }
+        });
+        window.dispatchEvent(customEvent);
+      }
       
       // 显示成功提示
       setTimeout(() => {
@@ -622,12 +654,14 @@ export default function ChatPage() {
               }}
             />
           </div>
-          <button 
-            onClick={handleSend}
-            className="w-8 h-8 flex items-center justify-center p-1 bg-green-600 rounded-full hover:bg-green-700 transition-colors"
-          >
-            <span className="text-white text-sm">↑</span>
-          </button>
+          <div className="flex-shrink-0">
+            <button 
+              onClick={handleSend}
+              className="w-8 h-8 flex items-center justify-center p-1 bg-green-600 rounded-full hover:bg-green-700 transition-colors"
+            >
+              <span className="text-white text-sm leading-none">↑</span>
+            </button>
+          </div>
         </div>
         
         {/* 快捷操作区域 */}

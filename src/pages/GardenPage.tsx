@@ -14,21 +14,37 @@ export default function GardenPage() {
     // 一次性从localStorage获取echo_archives
     const storedArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
     const archivesArray = Object.keys(storedArchives).map(date => storedArchives[date]);
+    console.log('GardenPage初始化: 从localStorage读取的archives:', storedArchives);
+    console.log('GardenPage初始化: 转换后的archivesArray:', archivesArray);
     setArchives(archivesArray);
     
     // 监听storage事件，确保数据一旦变动，花园立刻重新计算
-    const handleStorageChange = () => {
-      console.log('GardenPage: Storage事件触发，重新读取数据');
+    const handleStorageChange = (event: StorageEvent) => {
+      console.log('GardenPage: Storage事件触发，重新读取数据', event);
       const updatedArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
       const updatedArray = Object.keys(updatedArchives).map(date => updatedArchives[date]);
+      console.log('GardenPage: 更新后的archives:', updatedArchives);
+      console.log('GardenPage: 更新后的archivesArray:', updatedArray);
+      setArchives(updatedArray);
+    };
+    
+    // 监听自定义事件作为备用方案
+    const handleCustomEvent = (event: CustomEvent) => {
+      console.log('GardenPage: 自定义事件触发', event);
+      const updatedArchives = event.detail.archives;
+      const updatedArray = Object.keys(updatedArchives).map(date => updatedArchives[date]);
+      console.log('GardenPage: 自定义事件更新后的archives:', updatedArchives);
+      console.log('GardenPage: 自定义事件更新后的archivesArray:', updatedArray);
       setArchives(updatedArray);
     };
     
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('echo_archives_updated', handleCustomEvent);
     
     // 清理函数
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('echo_archives_updated', handleCustomEvent);
     };
   }, []);
 
