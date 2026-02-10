@@ -11,40 +11,95 @@ export default function GardenPage() {
   const [archives, setArchives] = useState<Array<{date: string, keywords: string[], mood: string, records: {今日习得: string, 逻辑突破: string, 改进点: string}, messages?: Array<{role: string, content: string}>}>>([]);
 
   useEffect(() => {
-    // 一次性从localStorage获取echo_archives
-    const storedArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
-    const archivesArray = Object.keys(storedArchives).map(date => storedArchives[date]);
-    console.log('GardenPage初始化: 从localStorage读取的archives:', storedArchives);
-    console.log('GardenPage初始化: 转换后的archivesArray:', archivesArray);
-    setArchives(archivesArray);
+    // 检查localStorage是否可用
+    try {
+      const testKey = 'test_localstorage';
+      localStorage.setItem(testKey, 'test');
+      localStorage.removeItem(testKey);
+      console.log('localStorage可用');
+    } catch (error) {
+      console.error('localStorage不可用:', error);
+      toast.error('浏览器存储功能不可用，请检查设置');
+      return;
+    }
+    
+    // 定义加载数据的函数
+    const loadData = () => {
+      console.log('开始加载数据...');
+      const storedArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
+      console.log('GardenPage初始化: 从localStorage读取的archives:', storedArchives);
+      console.log('GardenPage初始化: archives键的数量:', Object.keys(storedArchives).length);
+      
+      // 确保每个archive都有必要的字段
+      const validArchives = {};
+      Object.keys(storedArchives).forEach(date => {
+        const archive = storedArchives[date];
+        if (archive && (archive.date || archive.mood || archive.keywords)) {
+          validArchives[date] = archive;
+        }
+      });
+      
+      const archivesArray = Object.keys(validArchives).map(date => validArchives[date]);
+      console.log('GardenPage初始化: 转换后的archivesArray:', archivesArray);
+      console.log('GardenPage初始化: archivesArray长度:', archivesArray.length);
+      setArchives(archivesArray);
+      
+      // 保存一份到localStorage作为备份
+      localStorage.setItem('echo_archives_backup', JSON.stringify(validArchives));
+    };
+    
+    // 立即加载数据
+    loadData();
     
     // 监听storage事件，确保数据一旦变动，花园立刻重新计算
     const handleStorageChange = (event: StorageEvent) => {
       console.log('GardenPage: Storage事件触发，重新读取数据', event);
-      const updatedArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
-      const updatedArray = Object.keys(updatedArchives).map(date => updatedArchives[date]);
-      console.log('GardenPage: 更新后的archives:', updatedArchives);
-      console.log('GardenPage: 更新后的archivesArray:', updatedArray);
-      setArchives(updatedArray);
+      loadData();
     };
     
     // 监听自定义事件作为备用方案
     const handleCustomEvent = (event: CustomEvent) => {
       console.log('GardenPage: 自定义事件触发', event);
-      const updatedArchives = event.detail.archives;
-      const updatedArray = Object.keys(updatedArchives).map(date => updatedArchives[date]);
-      console.log('GardenPage: 自定义事件更新后的archives:', updatedArchives);
-      console.log('GardenPage: 自定义事件更新后的archivesArray:', updatedArray);
-      setArchives(updatedArray);
+      loadData();
+    };
+    
+    // 监听页面可见性变化，当页面从隐藏变为可见时重新加载数据
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('页面变为可见，重新加载数据');
+        // 延迟一点时间再加载，确保localStorage已经更新
+        setTimeout(loadData, 100);
+      }
+    };
+    
+    // 监听焦点事件，当页面获得焦点时重新加载数据
+    const handleFocus = () => {
+      console.log('页面获得焦点，重新加载数据');
+      loadData();
     };
     
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('echo_archives_updated', handleCustomEvent);
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    // 定期检查数据一致性（每5秒）
+    const interval = setInterval(() => {
+      const currentArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
+      const currentArray = Object.keys(currentArchives).map(date => currentArchives[date]);
+      if (currentArray.length !== archives.length) {
+        console.log('检测到数据不一致，重新加载');
+        loadData();
+      }
+    }, 5000);
     
     // 清理函数
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('echo_archives_updated', handleCustomEvent);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(interval);
     };
   }, []);
 
@@ -459,6 +514,22 @@ export default function GardenPage() {
               title="刷新数据"
             >
               <TrendingUp size={16} strokeWidth={1.5} className="text-green-600" />
+            </button>
+            <button 
+              onClick={() => {
+                // 强制从localStorage重新加载数据
+                console.log('强制刷新数据');
+                const forcedArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
+                console.log('强制刷新 - 从localStorage读取的archives:', forcedArchives);
+                const forcedArray = Object.keys(forcedArchives).map(date => forcedArchives[date]);
+                console.log('强制刷新 - 转换后的archivesArray:', forcedArray);
+                setArchives(forcedArray);
+                toast.success('数据已强制刷新');
+              }}
+              className="px-3 py-2 bg-green-100 text-green-700 rounded-full text-xs hover:bg-green-200 transition-colors font-medium"
+              title="强制刷新数据"
+            >
+              刷新
             </button>
             <button className="px-5 py-2.5 bg-green-50 text-[#1A2E1A] rounded-3xl text-xs hover:bg-green-100 transition-colors font-medium">
               + 补卡
