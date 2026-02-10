@@ -480,7 +480,7 @@ export default function GardenPage() {
               return dateCells.map((dayIndex, index) => {
                 if (dayIndex === null) {
                   // 空白格子
-                  return <div key={`empty-${index}`} className="w-10 h-10" />;
+                  return <div key={`empty-${index}`} style={{ aspectRatio: '1 / 1' }} />;
                 }
                 
                 // 创建正确的日期对象 - 使用UTC方法避免时区问题
@@ -488,7 +488,7 @@ export default function GardenPage() {
                 
                 // 验证日期是否有效
                 if (isNaN(currentDate.getTime())) {
-                  return <div key={`invalid-${index}`} className="w-10 h-10" />;
+                  return <div key={`invalid-${index}`} style={{ aspectRatio: '1 / 1' }} />;
                 }
                 
                 const dateString = currentDate.toISOString().split('T')[0]; // 获取目标日期，格式为YYYY-MM-DD
@@ -530,8 +530,8 @@ export default function GardenPage() {
                   return (
                     <div
                       key={`day-${dayIndex}`}
-                      className={`w-10 h-10 rounded-sm ${cursorClass} ${bgColor} opacity-30`}
-                      style={{ pointerEvents: pointerEvents as any }}
+                      className={`rounded-sm ${cursorClass} ${bgColor} opacity-30`}
+                      style={{ aspectRatio: '1 / 1', pointerEvents: pointerEvents as any }}
                     />
                   );
                 } else if (hasArchive && archive) {
@@ -563,8 +563,8 @@ export default function GardenPage() {
                   <div
                     key={`day-${dayIndex}`}
                     onClick={() => !isFuture && handlePixelClick(dayIndex)}
-                    className={`w-10 h-10 rounded-sm ${cursorClass} hover:scale-110 transition-all ${bgColor}`}
-                    style={{ pointerEvents: pointerEvents as any }}
+                    className={`rounded-sm ${cursorClass} hover:scale-110 transition-all ${bgColor}`}
+                    style={{ aspectRatio: '1 / 1', pointerEvents: pointerEvents as any }}
                   />
                 );
               });
