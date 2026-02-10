@@ -26,7 +26,56 @@ export default function GardenPage() {
     // 定义加载数据的函数
     const loadData = () => {
       console.log('开始加载数据...');
-      const storedArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
+      
+      // 尝试多种方式获取数据
+      let storedArchives = {};
+      
+      // 方法1：直接从localStorage获取
+      try {
+        const data = localStorage.getItem('echo_archives');
+        if (data) {
+          storedArchives = JSON.parse(data);
+          console.log('方法1成功：从localStorage获取数据');
+        }
+      } catch (error) {
+        console.error('方法1失败:', error);
+      }
+      
+      // 方法2：如果方法1失败，尝试从备份获取
+      if (Object.keys(storedArchives).length === 0) {
+        try {
+          const backupData = localStorage.getItem('echo_archives_backup');
+          if (backupData) {
+            storedArchives = JSON.parse(backupData);
+            console.log('方法2成功：从备份获取数据');
+            // 恢复到主存储
+            localStorage.setItem('echo_archives', backupData);
+          }
+        } catch (error) {
+          console.error('方法2失败:', error);
+        }
+      }
+      
+      // 方法3：如果前两种方法都失败，尝试遍历localStorage
+      if (Object.keys(storedArchives).length === 0) {
+        try {
+          console.log('尝试方法3：遍历localStorage');
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('echo_archives')) {
+              const data = localStorage.getItem(key);
+              if (data) {
+                storedArchives = JSON.parse(data);
+                console.log(`方法3成功：从${key}获取数据`);
+                break;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('方法3失败:', error);
+        }
+      }
+      
       console.log('GardenPage初始化: 从localStorage读取的archives:', storedArchives);
       console.log('GardenPage初始化: archives键的数量:', Object.keys(storedArchives).length);
       
@@ -45,11 +94,20 @@ export default function GardenPage() {
       setArchives(archivesArray);
       
       // 保存一份到localStorage作为备份
-      localStorage.setItem('echo_archives_backup', JSON.stringify(validArchives));
+      try {
+        localStorage.setItem('echo_archives_backup', JSON.stringify(validArchives));
+      } catch (error) {
+        console.error('保存备份失败:', error);
+      }
     };
     
     // 立即加载数据
     loadData();
+    
+    // 延迟再次加载数据（解决某些浏览器加载时机问题）
+    setTimeout(loadData, 500);
+    setTimeout(loadData, 1000);
+    setTimeout(loadData, 2000);
     
     // 监听storage事件，确保数据一旦变动，花园立刻重新计算
     const handleStorageChange = (event: StorageEvent) => {
@@ -93,6 +151,26 @@ export default function GardenPage() {
       }
     }, 5000);
     
+    // 添加触摸事件监听，解决移动端刷新问题
+    const handleTouchStart = () => {
+      console.log('触摸开始，检查数据');
+      setTimeout(loadData, 100);
+    };
+    
+    // 添加滚动事件监听，解决移动端滚动后数据丢失问题
+    let scrollTimeout;
+    const handleScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        console.log('滚动结束，检查数据');
+        loadData();
+      }, 500);
+    };
+    
+    // 监听触摸和滚动事件
+    document.addEventListener('touchstart', handleTouchStart);
+    window.addEventListener('scroll', handleScroll);
+    
     // 清理函数
     return () => {
       window.removeEventListener('storage', handleStorageChange);
@@ -100,6 +178,11 @@ export default function GardenPage() {
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
       clearInterval(interval);
+      document.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('scroll', handleScroll);
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+      }
     };
   }, []);
 

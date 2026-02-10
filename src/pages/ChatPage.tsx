@@ -419,6 +419,12 @@ export default function ChatPage() {
       // 保存回localStorage
       localStorage.setItem('echo_archives', JSON.stringify(existingArchives));
       
+      // 强制再次保存，确保数据写入
+      setTimeout(() => {
+        localStorage.setItem('echo_archives', JSON.stringify(existingArchives));
+        console.log('二次保存完成');
+      }, 100);
+      
       // 创建并触发自定义事件，确保同一页面内的组件能接收到通知
       try {
         const storageEvent = new StorageEvent('storage', {
@@ -475,6 +481,12 @@ export default function ChatPage() {
       
       // 保存回localStorage
       localStorage.setItem('echo_archives', JSON.stringify(existingArchives));
+      
+      // 强制再次保存，确保数据写入
+      setTimeout(() => {
+        localStorage.setItem('echo_archives', JSON.stringify(existingArchives));
+        console.log('二次保存完成');
+      }, 100);
       
       // 创建并触发自定义事件，确保同一页面内的组件能接收到通知
       try {
