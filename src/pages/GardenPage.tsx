@@ -1,14 +1,60 @@
 import { useState, useEffect } from 'react';
-import { X, Sparkles, Sprout, BrainCircuit, Hash, Calendar, TrendingUp, Key, Camera, Download, Check, MessageCircle, BarChart3 } from 'lucide-react';
+import { X, Sparkles, Sprout, BrainCircuit, Hash, Calendar, TrendingUp, Key, Camera, Download, Check, MessageCircle, BarChart3, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { getDaysInMonth, makeDateKey, startOfLocalDay } from '../utils/dateUtils';
+import { getMoodSurface } from '../utils/moodStyles';
 
 export default function GardenPage() {
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   const [showGrowthCard, setShowGrowthCard] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [historyMessages, setHistoryMessages] = useState<Array<{role: string, content: string}>>([]);
-  const [selectedDate, setSelectedDate] = useState(5);
+  const [selectedDate, setSelectedDate] = useState(() => new Date().getDate() - 1);
+  const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
+  const [viewMonth, setViewMonth] = useState(() => new Date().getMonth());
   const [archives, setArchives] = useState<Array<{date: string, keywords: string[], mood: string, records: {今日习得: string, 逻辑突破: string, 改进点: string}, messages?: Array<{role: string, content: string}>}>>([]);
+
+  const isCurrentViewMonth = () => {
+    const now = new Date();
+    return viewYear === now.getFullYear() && viewMonth === now.getMonth();
+  };
+
+  const canGoNextMonth = () => {
+    const now = new Date();
+    if (viewYear < now.getFullYear()) return true;
+    if (viewYear === now.getFullYear() && viewMonth < now.getMonth()) return true;
+    return false;
+  };
+
+  const shiftMonth = (delta: number) => {
+    const now = new Date();
+    let newYear = viewYear;
+    let newMonth = viewMonth + delta;
+    if (newMonth < 0) {
+      newMonth = 11;
+      newYear -= 1;
+    } else if (newMonth > 11) {
+      newMonth = 0;
+      newYear += 1;
+    }
+    // 不允许切换到未来月份
+    if (newYear > now.getFullYear() || (newYear === now.getFullYear() && newMonth > now.getMonth())) {
+      return;
+    }
+    setViewYear(newYear);
+    setViewMonth(newMonth);
+    const isNow = newYear === now.getFullYear() && newMonth === now.getMonth();
+    setSelectedDate(isNow ? now.getDate() - 1 : 0);
+    setShowGrowthCard(false);
+  };
+
+  const dateKeyForDay = (dayIndex: number) => makeDateKey(viewYear, viewMonth, dayIndex + 1);
+
+  const isFutureDay = (dayIndex: number) => {
+    const day = startOfLocalDay(new Date(viewYear, viewMonth, dayIndex + 1));
+    const today = startOfLocalDay();
+    return day.getTime() > today.getTime();
+  };
 
   useEffect(() => {
     // 检查localStorage是否可用
@@ -204,9 +250,7 @@ export default function GardenPage() {
 
   const handleSaveCard = () => {
     // 获取当前选中的日期
-    const today = new Date();
-    const currentDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), selectedDate + 1));
-    const dateString = currentDate.toISOString().split('T')[0];
+    const dateString = dateKeyForDay(selectedDate);
     
     // 从localStorage获取现有的归档数据
     const allArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
@@ -266,13 +310,10 @@ export default function GardenPage() {
     setSelectedDate(dayIndex);
     
     // 直接检查日期状态，避免使用getArchiveForDay函数
-    const today = new Date();
-    const targetDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), dayIndex + 1));
-    const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-    const isFuture = targetDate > todayUTC;
+    const isFuture = isFutureDay(dayIndex);
     
     // 从状态中查找归档数据
-    const dateString = targetDate.toISOString().split('T')[0];
+    const dateString = dateKeyForDay(dayIndex);
     const archive = archives.find(a => a.date === dateString);
     const hasArchive = !!archive;
     
@@ -307,24 +348,8 @@ export default function GardenPage() {
       };
     }
     
-    // 根据日期获取对应的归档数据
-    const today = new Date();
-    const targetDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), dayIndex + 1));
-    
-    // 验证日期是否有效
-    if (isNaN(targetDate.getTime())) {
-      return {
-        isFuture: false,
-        hasArchive: false,
-        archive: null
-      };
-    }
-    
-    const dateString = targetDate.toISOString().split('T')[0]; // 获取目标日期，格式为YYYY-MM-DD
-    
-    // 判断是否为未来日期 - 使用UTC日期比较
-    const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-    const isFuture = targetDate > todayUTC;
+    const dateString = dateKeyForDay(dayIndex);
+    const isFuture = isFutureDay(dayIndex);
     
     // 从状态中查找归档数据
     const archive = archives.find(a => a.date === dateString);
@@ -337,16 +362,8 @@ export default function GardenPage() {
   };
 
   const getGrowthCardContent = (dayIndex: number) => {
-    // 创建正确的日期对象
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth();
-    const currentDate = new Date(Date.UTC(currentYear, currentMonth, dayIndex + 1));
-    const dateString = currentDate.toISOString().split('T')[0]; // 获取目标日期，格式为YYYY-MM-DD
-    
-    // 判断是否为未来日期 - 使用UTC日期比较
-    const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-    const isFuture = currentDate > todayUTC;
+    const dateString = dateKeyForDay(dayIndex);
+    const isFuture = isFutureDay(dayIndex);
     
     // 从状态中查找归档数据
     const archive = archives.find(a => a.date === dateString);
@@ -487,20 +504,14 @@ export default function GardenPage() {
     return 'border-green-200';
   };
 
-  // 计算本月统计数据
+  // 计算当前查看月份的统计数据
   const getMonthlyStats = () => {
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth();
-    
-    // 获取本月所有日期
-    const daysInMonth = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate();
+    // 获取查看月份的所有日期
+    const daysInMonth = getDaysInMonth(viewYear, viewMonth);
     const monthDates = [];
     
     for (let i = 1; i <= daysInMonth; i++) {
-      const date = new Date(Date.UTC(currentYear, currentMonth, i));
-      const dateString = date.toISOString().split('T')[0];
-      monthDates.push(dateString);
+      monthDates.push(makeDateKey(viewYear, viewMonth, i));
     }
     
     // 从状态获取归档数据
@@ -623,7 +634,28 @@ export default function GardenPage() {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-green-50">
-          <h2 className="text-[#1A2E1A] font-semibold text-lg mb-4">二月心情走势</h2>
+          <div className="flex items-center justify-between mb-4">
+            <button
+              type="button"
+              onClick={() => shiftMonth(-1)}
+              className="p-2 rounded-full hover:bg-green-50 transition-colors text-[#1A2E1A]"
+              aria-label="上个月"
+            >
+              <ChevronLeft size={20} strokeWidth={1.5} />
+            </button>
+            <h2 className="text-[#1A2E1A] font-semibold text-lg">
+              {viewYear}年{viewMonth + 1}月心情走势
+            </h2>
+            <button
+              type="button"
+              onClick={() => shiftMonth(1)}
+              disabled={!canGoNextMonth()}
+              className={`p-2 rounded-full transition-colors ${canGoNextMonth() ? 'hover:bg-green-50 text-[#1A2E1A]' : 'text-slate-300 cursor-not-allowed'}`}
+              aria-label="下个月"
+            >
+              <ChevronRight size={20} strokeWidth={1.5} />
+            </button>
+          </div>
           <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold text-[#334155] mb-3">
             <span>日</span>
             <span>一</span>
@@ -634,12 +666,11 @@ export default function GardenPage() {
             <span>六</span>
           </div>
           <div className="grid grid-cols-7 gap-2">
-            {/* 计算本月第一天是星期几 */}
+            {/* 计算本月第一天是星期几（本地时区） */}
             {(() => {
-                const today = new Date();
-                    const firstDayOfMonth = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1));
-                    const firstDayWeek = firstDayOfMonth.getUTCDay(); // 使用UTC方法
-                    const daysInMonth = new Date(Date.UTC(today.getFullYear(), today.getMonth() + 1, 0)).getUTCDate(); // 使用UTC方法
+              const firstDayOfMonth = new Date(viewYear, viewMonth, 1);
+              const firstDayWeek = firstDayOfMonth.getDay();
+              const daysInMonth = getDaysInMonth(viewYear, viewMonth);
               
               // 创建空格子数组，用于填充月初的空白
               const emptyCells = Array(firstDayWeek).fill(null);
@@ -653,19 +684,8 @@ export default function GardenPage() {
                   return <div key={`empty-${index}`} style={{ aspectRatio: '1 / 1' }} />;
                 }
                 
-                // 创建正确的日期对象 - 使用UTC方法避免时区问题
-                const currentDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), dayIndex + 1));
-                
-                // 验证日期是否有效
-                if (isNaN(currentDate.getTime())) {
-                  return <div key={`invalid-${index}`} style={{ aspectRatio: '1 / 1' }} />;
-                }
-                
-                const dateString = currentDate.toISOString().split('T')[0]; // 获取目标日期，格式为YYYY-MM-DD
-                
-                // 判断是否为未来日期 - 使用UTC日期比较
-                const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-                const isFuture = currentDate > todayUTC;
+                const dateString = dateKeyForDay(dayIndex);
+                const isFuture = isFutureDay(dayIndex);
                 
                 // 从状态中查找归档数据
                 const archive = archives.find(a => a.date === dateString);
@@ -673,8 +693,7 @@ export default function GardenPage() {
                 
                 // 仅在开发模式下且为今天时输出调试信息
                 if (process.env.NODE_ENV === 'development') {
-                  const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-                  const todayString = todayUTC.toISOString().split('T')[0];
+                  const todayString = makeDateKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
                   if (dateString === todayString) {
                     console.log('日历格子 - 查找日期:', dateString);
                     console.log('日历格子 - 所有archives:', archives);
@@ -743,7 +762,9 @@ export default function GardenPage() {
         </div>
 
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-green-50">
-          <h2 className="text-[#1A2E1A] font-semibold text-lg mb-5">本月洞察</h2>
+          <h2 className="text-[#1A2E1A] font-semibold text-lg mb-5">
+            {isCurrentViewMonth() ? '本月洞察' : `${viewMonth + 1}月洞察`}
+          </h2>
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <Calendar size={20} strokeWidth={1.5} className="text-green-600" />
@@ -777,39 +798,26 @@ export default function GardenPage() {
       </div>
 
       {showWeeklyReport && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="border border-slate-200 border-dashed border-green-200 bg-green-50/90 backdrop-blur-md rounded-3xl shadow-[0_20px_40px_-15px_rgba(22,163,74,0.15)] max-w-[380px] mx-4 max-h-[70vh] overflow-hidden scrollbar-hide">
-            {/* 顶部工具栏 */}
-            <div className="flex justify-between items-center p-4 border-b border-green-100">
-              <button 
-                onClick={handleSaveWeeklyReport}
-                className={`flex items-center gap-2 transition-colors font-mono text-xs font-bold ${getMoodButtonTextColorClass(growthContent?.mood)} ${getMoodButtonBgColorClass(growthContent?.mood)}`}
-              >
-                <Download size={16} strokeWidth={1.5} />
-                <span>保存卡片</span>
-              </button>
-              <button 
-                onClick={() => setShowWeeklyReport(false)}
-                className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-md flex items-center justify-center text-slate-500 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="relative border border-green-200 bg-green-50/90 backdrop-blur-md rounded-3xl shadow-[0_20px_40px_-15px_rgba(22,163,74,0.15)] w-full max-w-[380px] max-h-[70vh] overflow-y-auto scrollbar-hide">
+            <button 
+              onClick={() => setShowWeeklyReport(false)}
+              className="absolute top-3 right-3 z-10 w-8 h-8 bg-white/80 hover:bg-white rounded-md flex items-center justify-center text-slate-500 transition-colors"
+            >
+              <X size={18} />
+            </button>
             
             {/* 主信息区 */}
-            <div className="p-6 space-y-6">
+            <div className="px-6 pt-5 pb-6 space-y-5">
               {/* 标题区 */}
               <div className="text-center">
-                <h3 className="text-lg font-medium text-green-900 flex items-center justify-center gap-2 font-mono">
-                  <Sparkles size={20} strokeWidth={1.5} className="text-green-800" />
-                  <span>Echo · 成长周报</span>
+                <h3 className="text-lg font-medium text-green-900">
+                  Echo · 成长周报
                 </h3>
-                <p className="text-xs text-green-600 mt-1 font-sans">
+                <p className="text-xs text-green-600 mt-1">
                   {(() => {
                     // 动态计算本周日期范围
                     const today = new Date();
-                    const currentYear = today.getFullYear();
-                    const currentMonth = today.getMonth();
                     
                     // 获取本周的第一天（周一）
                     const firstDayOfWeek = new Date(today);
@@ -905,7 +913,7 @@ export default function GardenPage() {
               <div className="flex justify-center gap-4">
                 <div className="bg-green-50/50 rounded-xl p-3 flex flex-col items-center gap-1">
                   <BrainCircuit size={16} strokeWidth={1.5} className="text-green-800" />
-                  <span className="text-xs text-green-700 font-mono font-medium">深度思考</span>
+                  <span className="text-xs text-green-700 font-medium">深度思考</span>
                   <span className="text-lg font-semibold text-green-900">
                     {(() => {
                       // 从localStorage获取本周的归档数据
@@ -932,11 +940,11 @@ export default function GardenPage() {
                       return weekCount;
                     })()}
                   </span>
-                  <span className="text-xs text-green-600 font-mono">次</span>
+                  <span className="text-xs text-green-600">次</span>
                 </div>
                 <div className="bg-green-50/50 rounded-xl p-3 flex flex-col items-center gap-1">
                   <Hash size={16} strokeWidth={1.5} className="text-green-800" />
-                  <span className="text-xs text-green-700 font-mono font-medium">关键词</span>
+                  <span className="text-xs text-green-700 font-medium">关键词</span>
                   <span className="text-lg font-semibold text-green-900">
                     {(() => {
                       // 从localStorage获取本周的归档数据
@@ -963,14 +971,14 @@ export default function GardenPage() {
                       return allKeywords.size;
                     })()}
                   </span>
-                  <span className="text-xs text-green-600 font-mono">个</span>
+                  <span className="text-xs text-green-600">个</span>
                 </div>
               </div>
               
               {/* 组件 C：最具启发的一句回声 */}
               <div className="text-center">
-                <p className="text-green-800 font-mono text-xs mb-2 font-medium">✨ 最具启发的一句回声：</p>
-                <div className="text-sm text-green-900 font-bold italic bg-green-50 rounded-2xl p-4 mx-4 font-mono leading-relaxed">
+                <p className="text-green-800 text-xs mb-2 font-medium">✨ 最具启发的一句回声：</p>
+                <div className="text-sm text-green-900 font-bold italic bg-green-50 rounded-2xl p-4 mx-4 leading-relaxed">
                   {(() => {
                     // 从localStorage获取本周的归档数据
                     const today = new Date();
@@ -1015,52 +1023,38 @@ export default function GardenPage() {
             
             {/* 底部品牌区 */}
             <div className="border-t border-green-100 p-4 text-center">
-              <div className="flex items-center justify-center gap-2 text-green-700 font-mono text-xs">
-                <span>(</span>
+              <div className="flex items-center justify-center gap-2 text-green-700 text-xs">
                 <Sprout size={24} strokeWidth={1.5} className="text-green-600" />
                 <span>Echo · 见证成长</span>
-                <span>)</span>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {showGrowthCard && growthContent && (
+      {showGrowthCard && growthContent && (() => {
+        const mood = getMoodSurface(growthContent?.mood);
+        return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className={`border border-dashed ${getMoodBorderColorClass(growthContent?.mood)} bg-slate-50/90 backdrop-blur-md rounded-3xl shadow-[0_20px_40px_-15px_rgba(22,163,74,0.15)] max-w-[380px] mx-4 max-h-[80vh] overflow-hidden scrollbar-hide`}>
-            {/* 顶部导航栏 */}
-            <div className="flex justify-between items-center p-4 border-b border-slate-100">
-              <button 
-                onClick={handleSaveCard}
-                className={`flex items-center gap-2 transition-colors font-mono text-xs font-bold ${getMoodButtonTextColorClass(growthContent?.mood)} ${getMoodButtonBgColorClass(growthContent?.mood)}`}
-              >
-                <Download size={16} strokeWidth={1.5} />
-                <span>保存卡片</span>
-              </button>
+          <div className={`border ${mood.border} ${mood.card} backdrop-blur-md rounded-3xl shadow-[0_20px_40px_-15px_rgba(15,23,42,0.12)] max-w-[380px] mx-4 max-h-[80vh] overflow-hidden scrollbar-hide`}>
+            <div className="flex justify-end items-center p-4">
               <button 
                 onClick={() => setShowGrowthCard(false)}
-                className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-md flex items-center justify-center text-slate-500 transition-colors"
+                className="w-8 h-8 bg-white/70 hover:bg-white rounded-lg flex items-center justify-center text-slate-500 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
             
-            {/* 核心信息区 */}
-            <div className="p-6 space-y-4">
+            <div className="px-6 pb-6 space-y-5">
               {/* 标题与日期 */}
               <div className="text-center">
-                <h3 className="text-base font-semibold text-green-900 flex items-center justify-center gap-2 font-mono">
-                  <Sparkles size={20} strokeWidth={1.5} className="text-green-800" />
-                  <span>今日成长回声</span>
-                  <Sparkles size={20} strokeWidth={1.5} className="text-green-800" />
+                <h3 className={`text-base font-semibold ${mood.title} text-center`}>
+                  今日成长回声
                 </h3>
-                <p className="text-xs text-green-600 mt-1 font-sans">
+                <p className={`text-xs ${mood.muted} mt-1.5`}>
                   {(() => {
-                    // 根据selectedDate计算对应的日期
-                    const today = new Date();
-                    const currentDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), selectedDate + 1));
-                    const dateString = currentDate.toISOString().split('T')[0];
+                    const dateString = dateKeyForDay(selectedDate);
                     const [year, month, day] = dateString.split('-');
                     return `${year}年${month}月${day}日`;
                   })()}
@@ -1068,44 +1062,44 @@ export default function GardenPage() {
               </div>
               
               {/* 情绪标签 */}
-              <div className="flex justify-center gap-4">
+              <div className="flex justify-center gap-2">
                 {growthContent?.keywords && growthContent.keywords.length === 0 ? (
                   <>
-                    <div className="flex items-center gap-2">
-                      <Hash size={16} strokeWidth={1.5} className="text-gray-500" />
-                      <span className="text-xs text-green-700 font-mono">未记录</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Sparkles size={16} strokeWidth={1.5} className="text-gray-400" />
-                      <span className="text-xs text-green-700 font-mono">待补充</span>
-                    </div>
+                    <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full ${mood.chip}`}>
+                      <Hash size={14} strokeWidth={1.5} />
+                      未记录
+                    </span>
+                    <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full ${mood.chip}`}>
+                      <Sparkles size={14} strokeWidth={1.5} />
+                      待补充
+                    </span>
                   </>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2">
-                      <Sprout size={16} strokeWidth={1.5} className={getMoodColorClass(growthContent?.mood)} />
-                      <span className={`text-xs font-mono ${getMoodTextColorClass(growthContent?.mood)}`}>{growthContent?.mood}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Sparkles size={16} strokeWidth={1.5} className={getMoodColorClass(growthContent?.mood)} />
-                      <span className={`text-xs font-mono ${getMoodTextColorClass(growthContent?.mood)}`}>已记录</span>
-                    </div>
+                    <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full ${mood.chip}`}>
+                      <Sprout size={14} strokeWidth={1.5} />
+                      {growthContent?.mood}
+                    </span>
+                    <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full ${mood.chip}`}>
+                      <Sparkles size={14} strokeWidth={1.5} />
+                      已记录
+                    </span>
                   </>
                 )}
               </div>
               
               {/* 关键词区 */}
-              <div className="text-center">
-                <p className={`font-mono text-xs mb-2 font-medium ${getMoodTextColorClass(growthContent?.mood)}`}>--- <Key size={14} strokeWidth={1.5} className="inline mr-1" /> 今日关键词提取 ---</p>
+              <div>
+                <p className={`text-xs mb-2.5 font-medium text-center ${mood.accent}`}>今日关键词</p>
                 <div className="flex flex-wrap justify-center gap-2">
                   {growthContent?.keywords && growthContent.keywords.length > 0 ? (
                     growthContent.keywords.map((keyword: string, index: number) => (
-                      <span key={index} className={`font-mono text-xs px-3 py-1 rounded-full ${getMoodTextColorClass(growthContent?.mood)} ${getMoodBgColorClass(growthContent?.mood)}`}>
+                      <span key={index} className={`text-xs px-3 py-1 rounded-full ${mood.chip}`}>
                         #{keyword}
                       </span>
                     ))
                   ) : (
-                    <span className="font-mono text-xs text-gray-500 bg-gray-50 px-3 py-1 rounded-full">
+                    <span className={`text-xs px-3 py-1 rounded-full ${mood.chip}`}>
                       暂无
                     </span>
                   )}
@@ -1113,26 +1107,29 @@ export default function GardenPage() {
               </div>
               
               {/* 深度复盘子组件（Card-in-Card） */}
-              <div className="bg-green-100/30 rounded-2xl p-4 mt-6">
-                <p className="text-green-800 font-mono text-xs mb-3 font-medium">--- 🛡️ 今日行动汇总 ---</p>
-                <div className="space-y-3 leading-relaxed">
+              <div className={`${mood.panel} rounded-2xl p-4`}>
+                <p className={`text-xs mb-3 font-medium ${mood.accent}`}>今日行动汇总</p>
+                <div className="space-y-3">
                   {growthContent?.summary.map((item: string, index: number) => (
-                    <p key={index} className="font-mono text-xs text-slate-800">
-                      {index + 1}. {item}
-                    </p>
+                    <div key={index} className="flex items-start gap-2.5">
+                      <span className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${mood.chip}`}>
+                        {index + 1}
+                      </span>
+                      <p className="text-[13px] leading-relaxed text-slate-700">{item}</p>
+                    </div>
                   ))}
                 </div>
               </div>
               
               {/* 查看往日对话入口 */}
               {growthContent?.messages && (
-                <div className="mt-6 text-center">
+                <div className="mt-2 text-center">
                   <button 
                     onClick={() => {
                       setHistoryMessages(growthContent.messages);
                       setShowHistoryDialog(true);
                     }}
-                    className="text-green-600 text-xs font-mono hover:text-green-800 transition-colors"
+                    className={`text-xs transition-colors ${mood.accent} hover:opacity-80`}
                   >
                     查看当日对话记录 →
                   </button>
@@ -1141,17 +1138,16 @@ export default function GardenPage() {
             </div>
             
             {/* 品牌区域 */}
-            <div className="border-t border-slate-100 p-4 text-center">
-              <div className="flex items-center justify-center gap-2 text-green-700 font-mono text-xs">
-                <span>(</span>
-                <Sprout size={24} strokeWidth={1.5} className="text-green-600" />
+            <div className="px-4 pb-4 text-center">
+              <div className={`inline-flex items-center justify-center gap-2 text-xs ${mood.accent}`}>
+                <Sprout size={14} strokeWidth={1.5} />
                 <span>Echo · 见证成长</span>
-                <span>)</span>
               </div>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
       
       {/* 历史对话弹窗 */}
       {showHistoryDialog && (

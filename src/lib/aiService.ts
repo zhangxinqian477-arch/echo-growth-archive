@@ -42,7 +42,8 @@ export async function generateReflection(content: string): Promise<ReflectionRes
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: 'deepseek-v4-flash',
+        thinking: { type: 'disabled' },
         messages: [
           {
             role: 'system',
@@ -120,9 +121,8 @@ export async function summarizeToArchive(messages: Array<{role: string, content:
     // 提取对话内容用于分析
     const conversationContent = messages.map(msg => `${msg.role}: ${msg.content}`).join('\n');
     
-    // 获取当前日期（使用UTC时间避免时区问题）
     const now = new Date();
-    const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString().split('T')[0];
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     console.log('当前日期:', today);
     
     console.log('开始调用DeepSeek API进行对话总结...');
@@ -133,7 +133,8 @@ export async function summarizeToArchive(messages: Array<{role: string, content:
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: 'deepseek-v4-flash',
+        thinking: { type: 'disabled' },
         messages: [
           {
             role: 'system',

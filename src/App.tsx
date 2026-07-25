@@ -14,24 +14,21 @@ const queryClient = new QueryClient();
 const App = () => {
   const [activeTab, setActiveTab] = useState<'chat' | 'garden'>('chat');
   
-  // 在App初始化时清理脏数据
+  // 清理非法日期键与 2024 旧数据，保留合法 YYYY-MM-DD 归档
   useEffect(() => {
     try {
       const archives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
       const dateKeys = Object.keys(archives);
-      
-      // 检查是否有不符合YYYY-MM-DD格式的Key（包含'0', '1'或'2024'）
-      const hasInvalidData = dateKeys.some(key => 
-        key.includes('0') || 
-        key.includes('1') || 
-        key.includes('2024')
-      );
-      
-      if (hasInvalidData) {
-        console.log('App: 检测到无效数据，正在清理...');
-        // 直接清空echo_archives
-        localStorage.removeItem('echo_archives');
-        console.log('App: 已清理echo_archives中的无效数据');
+      const isValidDateKey = (key: string) => /^\d{4}-\d{2}-\d{2}$/.test(key) && !key.startsWith('2024-');
+      const invalidKeys = dateKeys.filter(key => !isValidDateKey(key));
+
+      if (invalidKeys.length > 0) {
+        const cleaned: Record<string, unknown> = {};
+        dateKeys.forEach(key => {
+          if (isValidDateKey(key)) cleaned[key] = archives[key];
+        });
+        localStorage.setItem('echo_archives', JSON.stringify(cleaned));
+        console.log('App: 已清理非法/过期归档键', invalidKeys);
       }
     } catch (error) {
       console.error('App: 清理旧数据失败', error);
@@ -43,8 +40,8 @@ const App = () => {
       <TooltipProvider>
         <Toaster />
         <SonnerToaster />
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-          <div className="w-[430px] h-[85vh] bg-[#F8FAF7] mx-auto shadow-2xl overflow-hidden relative flex flex-col">
+        <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 font-sans">
+          <div className="w-[430px] h-[85vh] bg-[#F8FAF7] mx-auto shadow-2xl overflow-hidden relative flex flex-col font-sans">
             {activeTab === 'chat' ? <ChatPage /> : <GardenPage />}
             <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
           </div>

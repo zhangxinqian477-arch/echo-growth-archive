@@ -13,6 +13,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['"PingFang SC"', 'PingFangSC', '"Hiragino Sans GB"', '"Microsoft YaHei"', 'sans-serif'],
+        mono: ['"PingFang SC"', 'PingFangSC', '"Hiragino Sans GB"', '"Microsoft YaHei"', 'sans-serif'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Sparkles, Sprout, Mic, Camera, Settings, BarChart3, Loader2 } from 'lucide-react';
+import { X, Sparkles, Sprout, Settings, BarChart3, Loader2 } from 'lucide-react';
 import { generateReflection, summarizeToArchive } from '../lib/aiService';
 import { toast } from 'sonner';
 import { getDateKey } from '../utils/dateUtils';
+import { getMoodSurface } from '../utils/moodStyles';
 
 // 简单的聊天响应函数，调用DeepSeek进行普通对话
 async function getChatResponse(userMessage: string, conversationHistory: Array<{role: string, content: string}>): Promise<string> {
@@ -26,7 +27,8 @@ async function getChatResponse(userMessage: string, conversationHistory: Array<{
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: 'deepseek-v4-flash',
+        thinking: { type: 'disabled' },
         messages: [
           {
             role: 'system',
@@ -92,9 +94,8 @@ async function getChatResponse(userMessage: string, conversationHistory: Array<{
    
    确保卡片生成的JSON结构中，keywords是对话中出现的具体名词的提取，而非抽象形容词。
 
-10. 生成卡片逻辑优化：
-   
-   当用户说"生成卡片"时，先在对话中显示用户消息，然后询问是否需要生成成长回声卡片，而不是直接生成。
+10. 生成卡片逻辑：
+   当用户说"生成卡片"或"生成今日卡片"时，系统会在前端直接生成成长回声卡片，你无需再询问确认，也不要代替生成流程回复长确认文案。
    
    生成卡片后，不要自动关闭，给用户足够时间阅读和选择是否关闭。
    
@@ -275,43 +276,61 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  const handleSend = async () => {
-    if (message.trim() === '') return;
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText ?? message).trim();
+    if (text === '') return;
     
-    // 检查是否包含"生成卡片"指令
-    if (message.includes('生成卡片')) {
-      // 先将用户消息添加到对话中
+    // 生成卡片：直接开生成，并保证出现可再次打开的按钮
+    if (text.includes('生成卡片') || text.includes('生成回声')) {
       const userMessage = {
         id: messages.length + 1,
         role: 'user' as const,
-        content: message,
+        content: text,
         timestamp: new Date().toISOString()
       };
-      setMessages(prev => [...prev, userMessage]);
-      
-      // 清空输入框
+      const assistantMessage = {
+        id: messages.length + 2,
+        role: 'assistant' as const,
+        content: '好的，正在为你生成今日成长回声…',
+        timestamp: new Date().toISOString()
+      };
+      const conversationForArchive = [...messages, userMessage];
+      setMessages([...conversationForArchive, assistantMessage]);
       setMessage('');
-      
-      // 延迟一点时间后显示生成卡片按钮（和结束对话逻辑一致）
+      setShowGenerateEchoButton(true);
+
       setTimeout(() => {
-        setShowGenerateEchoButton(true);
-      }, 500);
-      
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      }, 100);
+
+      void (async () => {
+        const ok = await handleGenerateCard(conversationForArchive);
+        setMessages(prev =>
+          prev.map(msg =>
+            msg.id === assistantMessage.id
+              ? {
+                  ...msg,
+                  content: ok
+                    ? '今日成长回声已生成。你可以点击下方按钮再次查看。'
+                    : '生成遇到一点问题，你可以再点下方按钮重试。'
+                }
+              : msg
+          )
+        );
+      })();
       return;
     }
     
     // 检查是否包含"结束"或"总结"意图
-    const isEnding = message.includes('结束') || message.includes('再见') || message.includes('拜拜') || message.includes('下次聊') || message.includes('总结') || message.includes('晚安') || message.includes('睡了') || message.includes('休息');
-    
-    // 检查是否是晚上12点前
-    const currentHour = new Date().getHours();
-    const isBeforeMidnight = currentHour < 24; // 简化判断，实际应该是 < 24
+    const isEnding = text.includes('结束') || text.includes('再见') || text.includes('拜拜') || text.includes('下次聊') || text.includes('总结') || text.includes('晚安') || text.includes('睡了') || text.includes('休息');
     
     // Step 1: 立即将用户消息推入messages状态
     const userMessage = {
       id: messages.length + 1,
       role: 'user' as const,
-      content: message,
+      content: text,
       timestamp: new Date().toISOString()
     };
     setMessages(prev => [...prev, userMessage]);
@@ -324,7 +343,7 @@ export default function ChatPage() {
     }, 100);
     
     // Step 2: 立即清空输入框
-    const userContent = message;
+    const userContent = text;
     setMessage('');
     
     // 更新对话计数
@@ -371,20 +390,25 @@ export default function ChatPage() {
   }
   };
 
-  const handleGenerateCard = async () => {
+  const handleGenerateCard = async (
+    conversationOverride?: Array<{id?: number, role: string, content: string, timestamp?: string}>
+  ): Promise<boolean> => {
     // 检查今日是否已生成卡片
     const dateString = getDateKey();
     const existingArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
     const existingArchive = existingArchives[dateString];
+    const sourceMessages = conversationOverride ?? messages;
     
     if (existingArchive) {
       // 已生成卡片，直接显示弹窗
       setSummaryData(existingArchive);
       setIsModalOpen(true);
+      setHasGeneratedToday(true);
+      setShowGenerateEchoButton(true);
       setTimeout(() => {
         toast.success('已加载今日成长回声');
       }, 0);
-      return;
+      return true;
     }
     
     setIsLoading(true);
@@ -392,14 +416,14 @@ export default function ChatPage() {
     try {
       // 调用summarizeToArchive函数获取归档数据
       console.log('正在调用AI服务生成归档数据');
-      const archiveData = await summarizeToArchive(messages.map(m => ({ role: m.role, content: m.content })));
+      const archiveData = await summarizeToArchive(sourceMessages.map(m => ({ role: m.role, content: m.content })));
       console.log('AI返回归档数据:', archiveData);
       
       // 创建完整的存档对象，包含归档数据和对话历史
       const completeArchive = {
         ...archiveData,
         date: dateString, // 确保使用正确的日期
-        messages: messages // 保存当前对话作为历史凭证
+        messages: sourceMessages // 保存当前对话作为历史凭证
       };
       
       // 设置摘要数据（使用completeArchive而不是archiveData）
@@ -449,16 +473,20 @@ export default function ChatPage() {
       
       // 弹出摘要卡片
       setIsModalOpen(true);
+      setHasGeneratedToday(true);
+      setShowGenerateEchoButton(true);
       
       // 显示成功提示
       setTimeout(() => {
         toast.success('回声已生成并保存到心灵花园');
       }, 0);
+      return true;
     } catch (error) {
       console.error('Full Error:', error.response?.data || error.message);
       setTimeout(() => {
         toast.error('AI分析失败，请稍后再试');
       }, 0);
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -568,7 +596,7 @@ export default function ChatPage() {
               {/* 时间分割线 */}
               {showMessageDate && msg.timestamp && (
                 <div className="flex justify-center my-4">
-                  <div className="bg-green-50 text-green-600 text-xs px-3 py-1 rounded-full font-mono">
+                  <div className="bg-green-50 text-green-600 text-xs px-3 py-1 rounded-full">
                     {new Date(msg.timestamp).toLocaleDateString('zh-CN', { 
                       year: 'numeric', 
                       month: 'long', 
@@ -637,191 +665,152 @@ export default function ChatPage() {
         })}
       </div>
 
-      <div className="flex-shrink-0 bg-white/95 backdrop-blur-md border-t border-green-100 px-4 py-4 z-40 mb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
-            <button className="w-6 h-6 flex items-center justify-center p-1 bg-green-100 rounded-full hover:bg-green-200 transition-colors">
-              <Mic size={14} strokeWidth={1.5} className="text-green-800" />
-            </button>
-            <button className="w-6 h-6 flex items-center justify-center p-1 bg-green-100 rounded-full hover:bg-green-200 transition-colors">
-              <Camera size={14} strokeWidth={1.5} className="text-green-800" />
-            </button>
-          </div>
-          <div className="flex-1 flex items-center">
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="我想说..."
-              className="flex-1 min-h-[40px] max-h-[120px] px-4 py-2 bg-gray-50 rounded-full border-0 focus:outline-none focus:ring-2 focus:ring-green-300 text-green-900 placeholder-gray-400 text-base resize-none overflow-y-auto"
-              style={{ 
-                height: 'auto',
-                minHeight: '40px',
-                maxHeight: '120px'
-              }}
-            />
-          </div>
-          <div className="flex-shrink-0">
-            <button 
-              onClick={handleSend}
-              className="w-8 h-8 flex items-center justify-center p-1 bg-green-600 rounded-full hover:bg-green-700 transition-colors"
-            >
-              <span className="text-white text-sm leading-none">↑</span>
-            </button>
-          </div>
+      <div className="flex-shrink-0 bg-white/95 backdrop-blur-md border-t border-green-100 px-4 pt-2.5 pb-3 z-40 mb-4">
+        {/* 快捷操作：点击仅填入输入框，不自动发送 */}
+        <div className="flex gap-1.5 overflow-x-auto mb-2 scrollbar-hide">
+          <button
+            type="button"
+            onClick={() => setMessage('生成今日卡片')}
+            className="flex-shrink-0 px-2.5 py-1 bg-green-50 text-green-700 rounded-[8px] text-[11px] font-medium hover:bg-green-100 transition-colors whitespace-nowrap"
+          >
+            生成今日卡片
+          </button>
+          <button
+            type="button"
+            onClick={() => setMessage('结束对话')}
+            className="flex-shrink-0 px-2.5 py-1 bg-gray-50 text-gray-600 rounded-[8px] text-[11px] font-medium hover:bg-gray-100 transition-colors whitespace-nowrap"
+          >
+            结束对话
+          </button>
+          <button
+            type="button"
+            onClick={() => setMessage('总结今日')}
+            className="flex-shrink-0 px-2.5 py-1 bg-blue-50 text-blue-600 rounded-[8px] text-[11px] font-medium hover:bg-blue-100 transition-colors whitespace-nowrap"
+          >
+            总结今日
+          </button>
         </div>
-        
-        {/* 快捷操作区域 */}
-        <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
-          <div className="flex gap-2 overflow-x-auto">
-            <button 
-              onClick={() => {
-                setMessage('生成今日卡片');
+
+        <div className="flex items-end gap-2 bg-white rounded-[16px] pl-4 pr-2 py-2 border border-transparent shadow-[0_1px_4px_rgba(15,23,42,0.08)] focus-within:border-[#16A34A] focus-within:ring-1 focus-within:ring-[#16A34A]/30 focus-within:shadow-[0_2px_8px_rgba(22,163,74,0.12)]">
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
                 handleSend();
-              }}
-              className="flex-shrink-0 px-3 py-2 bg-green-100 text-green-700 rounded-full text-sm font-medium hover:bg-green-200 transition-colors whitespace-nowrap"
-            >
-              生成今日卡片
-            </button>
-            <button 
-              onClick={() => {
-                setMessage('结束对话');
-                handleSend();
-              }}
-              className="flex-shrink-0 px-3 py-2 bg-gray-100 text-gray-700 rounded-full text-sm font-medium hover:bg-gray-200 transition-colors whitespace-nowrap"
-            >
-              结束对话
-            </button>
-            <button 
-              onClick={() => {
-                setMessage('总结今日');
-                handleSend();
-              }}
-              className="flex-shrink-0 px-3 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-medium hover:bg-blue-200 transition-colors whitespace-nowrap"
-            >
-              总结今日
-            </button>
-          </div>
+              }
+            }}
+            placeholder="我想说..."
+            rows={1}
+            className="flex-1 min-h-[24px] max-h-[120px] py-1.5 bg-transparent border-0 focus:outline-none text-green-900 placeholder-gray-400 text-base resize-none overflow-y-auto leading-6"
+          />
+          <button
+            type="button"
+            onClick={() => handleSend()}
+            className="w-8 h-8 mb-0.5 flex-shrink-0 flex items-center justify-center bg-green-600 rounded-full hover:bg-green-700 transition-colors"
+            aria-label="发送"
+          >
+            <span className="text-white text-sm leading-none">↑</span>
+          </button>
         </div>
       </div>
 
-      {showGrowthCard && (
+      {showGrowthCard && (() => {
+        const mood = getMoodSurface(growthContent.mood);
+        return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="border border-slate-200 border-dashed border-green-200 bg-green-50/90 backdrop-blur-md rounded-3xl shadow-[0_20px_40px_-15px_rgba(22,163,74,0.15)] max-w-[380px] mx-4 max-h-[80vh] overflow-hidden scrollbar-hide">
-            {/* 顶部导航栏 */}
-            <div className="flex justify-between items-center p-4 border-b border-slate-100">
-              <button className="flex items-center gap-2 text-green-700 hover:text-green-800 transition-colors font-mono text-xs font-bold">
-                <BarChart3 size={16} strokeWidth={1.5} />
-                <span>已保存</span>
-              </button>
+          <div className={`border ${mood.border} ${mood.card} backdrop-blur-md rounded-3xl shadow-[0_20px_40px_-15px_rgba(15,23,42,0.12)] max-w-[380px] mx-4 max-h-[80vh] overflow-hidden scrollbar-hide`}>
+            <div className="flex justify-end items-center p-4">
               <button 
                 onClick={() => setShowGrowthCard(false)}
-                className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-md flex items-center justify-center text-slate-500 transition-colors"
+                className="w-8 h-8 bg-white/70 hover:bg-white rounded-lg flex items-center justify-center text-slate-500 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
             
-            {/* 核心信息区 */}
-            <div className="p-6 space-y-4">
-              {/* 标题与日期 */}
+            <div className="px-6 pb-6 space-y-5">
               <div className="text-center">
-                <h3 className="text-base font-semibold text-green-900 flex items-center justify-center gap-2 font-mono">
-                  <Sparkles size={20} strokeWidth={1.5} className="text-green-800" />
-                  <span>今日成长回声</span>
-                  <Sparkles size={20} strokeWidth={1.5} className="text-green-800" />
+                <h3 className={`text-base font-semibold ${mood.title} text-center`}>
+                  今日成长回声
                 </h3>
-                <p className="text-xs text-green-600 mt-1 font-sans">
+                <p className={`text-xs ${mood.muted} mt-1.5`}>
                   {(() => {
-                    // 使用标准日期格式，如果数据里没有日期，默认显示当前日期
-                    const today = new Date().toISOString().split('T')[0];
+                    const today = getDateKey();
                     const [year, month, day] = today.split('-');
                     return `${year}年${month}月${day}日`;
                   })()}
                 </p>
               </div>
               
-              {/* 情绪标签 */}
-              <div className="flex justify-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Sprout size={16} strokeWidth={1.5} className="text-green-800" />
-                  <span className="text-xs text-green-700 font-mono">{growthContent.mood}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Sparkles size={16} strokeWidth={1.5} className="text-green-800" />
-                  <span className="text-xs text-green-700 font-mono">积极/自豪</span>
-                </div>
+              <div className="flex justify-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full ${mood.chip}`}>
+                  <Sprout size={14} strokeWidth={1.5} />
+                  {growthContent.mood}
+                </span>
+                <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full ${mood.chip}`}>
+                  <Sparkles size={14} strokeWidth={1.5} />
+                  已记录
+                </span>
               </div>
               
-              {/* 关键词区 */}
-              <div className="text-center">
-                <p className="text-green-800 font-mono text-xs mb-2 font-medium">--- 🔑 今日关键词提取 ---</p>
+              <div>
+                <p className={`text-xs mb-2.5 font-medium text-center ${mood.accent}`}>今日关键词</p>
                 <div className="flex flex-wrap justify-center gap-2">
                   {growthContent.keywords.map((keyword, index) => (
-                    <span key={index} className="font-mono text-xs text-green-700 bg-green-50 px-3 py-1 rounded-full">#{keyword}</span>
+                    <span key={index} className={`text-xs px-3 py-1 rounded-full ${mood.chip}`}>#{keyword}</span>
                   ))}
                 </div>
               </div>
               
-              {/* 今日行动汇总 */}
-              <div className="bg-green-100/30 rounded-2xl p-4 mt-6">
-                <p className="text-green-800 font-mono text-xs mb-3 font-medium">--- 📝 今日行动汇总 ---</p>
-                <div className="space-y-3 leading-relaxed">
+              <div className={`${mood.panel} rounded-2xl p-4`}>
+                <p className={`text-xs mb-3 font-medium ${mood.accent}`}>今日行动汇总</p>
+                <div className="space-y-3">
                   {growthContent.reflections.map((reflection, index) => (
-                    <p key={index} className="font-mono text-xs text-slate-800">
-                      {index + 1}. {reflection}
-                    </p>
+                    <div key={index} className="flex items-start gap-2.5">
+                      <span className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${mood.chip}`}>
+                        {index + 1}
+                      </span>
+                      <p className="text-[13px] leading-relaxed text-slate-700">{reflection}</p>
+                    </div>
                   ))}
                 </div>
               </div>
             </div>
             
-            {/* 品牌区域 */}
-            <div className="border-t border-slate-100 p-4 text-center">
-              <div className="flex items-center justify-center gap-2 text-green-700 font-mono text-xs">
-                <span>(</span>
-                <Sprout size={16} strokeWidth={1.5} />
+            <div className="px-4 pb-4 text-center">
+              <div className={`inline-flex items-center justify-center gap-2 text-xs ${mood.accent}`}>
+                <Sprout size={14} strokeWidth={1.5} />
                 <span>Echo · 见证成长</span>
-                <span>)</span>
               </div>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* SummaryCard 组件 */}
-      {isModalOpen && summaryData && (
+      {isModalOpen && summaryData && (() => {
+        const mood = getMoodSurface(summaryData.mood);
+        return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="border border-slate-200 border-dashed border-green-200 bg-green-50/90 backdrop-blur-md rounded-3xl shadow-[0_20px_40px_-15px_rgba(22,163,74,0.15)] max-w-[380px] mx-4 max-h-[80vh] overflow-hidden scrollbar-hide">
-            {/* 顶部导航栏 */}
-            <div className="flex justify-between items-center p-4 border-b border-slate-100">
-              <button className="flex items-center gap-2 text-green-700 hover:text-green-800 transition-colors font-mono text-xs font-bold">
-                <BarChart3 size={16} strokeWidth={1.5} />
-                <span>已保存</span>
-              </button>
+          <div className={`border ${mood.border} ${mood.card} backdrop-blur-md rounded-3xl shadow-[0_20px_40px_-15px_rgba(15,23,42,0.12)] max-w-[380px] mx-4 max-h-[80vh] overflow-hidden scrollbar-hide`}>
+            <div className="flex justify-end items-center p-4">
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-md flex items-center justify-center text-slate-500 transition-colors"
+                className="w-8 h-8 bg-white/70 hover:bg-white rounded-lg flex items-center justify-center text-slate-500 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
             
-            {/* 核心信息区 */}
-            <div className="p-6 space-y-4">
-              {/* 标题与日期 */}
+            <div className="px-6 pb-6 space-y-5">
               <div className="text-center">
-                <h3 className="text-base font-semibold text-green-900 flex items-center justify-center gap-2 font-mono">
-                  <Sparkles size={20} strokeWidth={1.5} className="text-green-800" />
-                  <span>今日成长回声</span>
-                  <Sparkles size={20} strokeWidth={1.5} className="text-green-800" />
+                <h3 className={`text-base font-semibold ${mood.title} text-center`}>
+                  今日成长回声
                 </h3>
-                <p className="text-xs text-green-600 mt-1 font-sans">
+                <p className={`text-xs ${mood.muted} mt-1.5`}>
                   {(() => {
                     const [year, month, day] = summaryData.date.split('-');
                     return `${year}年${month}月${day}日`;
@@ -829,78 +818,58 @@ export default function ChatPage() {
                 </p>
               </div>
               
-              {/* 情绪标签 */}
-              <div className="flex justify-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Sprout size={16} strokeWidth={1.5} className="text-green-800" />
-                  <span className="text-xs text-green-700 font-mono">{summaryData.mood}</span>
-                </div>
+              <div className="flex justify-center">
+                <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full ${mood.chip}`}>
+                  <Sprout size={14} strokeWidth={1.5} />
+                  {summaryData.mood}
+                </span>
               </div>
               
-              {/* 关键词区 */}
-              <div className="text-center">
-                <p className="text-green-800 font-mono text-xs mb-2 font-medium">--- 🔑 今日关键词提取 ---</p>
+              <div>
+                <p className={`text-xs mb-2.5 font-medium text-center ${mood.accent}`}>今日关键词</p>
                 <div className="flex flex-wrap justify-center gap-2">
                   {summaryData.keywords.map((keyword: string, index: number) => (
-                    <span key={index} className="font-mono text-xs text-green-700 bg-green-50 px-3 py-1 rounded-full">#{keyword}</span>
+                    <span key={index} className={`text-xs px-3 py-1 rounded-full ${mood.chip}`}>#{keyword}</span>
                   ))}
                 </div>
               </div>
               
-              {/* 三象限事实记录 */}
-              <div className="bg-green-100/30 rounded-2xl p-4 mt-6">
-                <p className="text-green-800 font-mono text-xs mb-3 font-medium">--- 🛡️ 今日行动汇总 ---</p>
-                <div className="space-y-3 leading-relaxed">
-                  <div className="flex items-start gap-2">
-                    <span className="text-green-600 font-mono text-xs">🧪</span>
-                    <div>
-                      <p className="font-mono text-xs text-green-700 font-medium">今日习得</p>
-                      <p className="font-mono text-xs text-slate-800">{summaryData.records.今日习得}</p>
-                    </div>
+              <div className={`${mood.panel} rounded-2xl p-4 space-y-3.5`}>
+                <p className={`text-xs font-medium ${mood.accent}`}>今日行动汇总</p>
+                <div className="space-y-3">
+                  <div>
+                    <p className={`text-xs font-medium mb-1 ${mood.accent}`}>今日习得</p>
+                    <p className="text-[13px] leading-relaxed text-slate-700">{summaryData.records.今日习得}</p>
                   </div>
-                  
-                  <div className="flex items-start gap-2">
-                    <span className="text-green-600 font-mono text-xs">✅</span>
-                    <div>
-                      <p className="font-mono text-xs text-green-700 font-medium">逻辑突破</p>
-                      <p className="font-mono text-xs text-slate-800">{summaryData.records.逻辑突破}</p>
-                    </div>
+                  <div>
+                    <p className={`text-xs font-medium mb-1 ${mood.accent}`}>逻辑突破</p>
+                    <p className="text-[13px] leading-relaxed text-slate-700">{summaryData.records.逻辑突破}</p>
                   </div>
-                  
-                  <div className="flex items-start gap-2">
-                    <span className="text-green-600 font-mono text-xs">🔍</span>
-                    <div>
-                      <p className="font-mono text-xs text-green-700 font-medium">改进点</p>
-                      <p className="font-mono text-xs text-slate-800">{summaryData.records.改进点}</p>
-                    </div>
+                  <div>
+                    <p className={`text-xs font-medium mb-1 ${mood.accent}`}>改进点</p>
+                    <p className="text-[13px] leading-relaxed text-slate-700">{summaryData.records.改进点}</p>
                   </div>
                 </div>
               </div>
               
-              {/* 导师建议 */}
-              <div className="bg-amber-50/50 rounded-2xl p-4 mt-4 border border-amber-200/50">
-                <div className="flex items-start gap-2">
-                  <span className="text-amber-600 font-mono text-xs">💡</span>
-                  <div>
-                    <p className="font-mono text-xs text-amber-700 font-medium">导师建议</p>
-                    <p className="font-mono text-xs text-slate-700">{summaryData.导师建议}</p>
-                  </div>
+              {summaryData.导师建议 && (
+                <div className="bg-white/60 rounded-2xl p-4">
+                  <p className="text-xs font-medium text-amber-700 mb-1">导师建议</p>
+                  <p className="text-[13px] leading-relaxed text-slate-700">{summaryData.导师建议}</p>
                 </div>
-              </div>
+              )}
             </div>
             
-            {/* 品牌区域 */}
-            <div className="border-t border-slate-100 p-4 text-center">
-              <div className="flex items-center justify-center gap-2 text-green-700 font-mono text-xs">
-                <span>(</span>
-                <Sprout size={16} strokeWidth={1.5} />
+            <div className="px-4 pb-4 text-center">
+              <div className={`inline-flex items-center justify-center gap-2 text-xs ${mood.accent}`}>
+                <Sprout size={14} strokeWidth={1.5} />
                 <span>Echo · 见证成长</span>
-                <span>)</span>
               </div>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
       
       {/* 清空数据确认弹窗 */}
       {showClearDataConfirm && (

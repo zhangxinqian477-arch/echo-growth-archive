@@ -72,7 +72,12 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: "PingFang SC", PingFangSC, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+
+  /* 全局统一为苹方，避免 mono 回退成等宽代码感字体 */
+  code, kbd, pre, samp {
+    font-family: "PingFang SC", PingFangSC, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   }
 }
 
