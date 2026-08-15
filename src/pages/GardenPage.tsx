@@ -1,18 +1,29 @@
 import { useState, useEffect } from 'react';
-import { X, Sparkles, Sprout, BrainCircuit, Hash, Calendar, TrendingUp, Key, Camera, Download, Check, MessageCircle, BarChart3, ChevronLeft, ChevronRight } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { X, Sparkles, Sprout, BrainCircuit, Hash, Calendar, TrendingUp, Key, BarChart3, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { getDaysInMonth, makeDateKey, startOfLocalDay } from '../utils/dateUtils';
 import { getMoodSurface } from '../utils/moodStyles';
+
+type HistoryMessage = { role: string; content: string };
+type Archive = {
+  date: string;
+  keywords: string[];
+  mood: string;
+  records: { 今日习得: string; 逻辑突破: string; 改进点: string };
+  messages?: HistoryMessage[];
+};
+type ArchiveMap = Record<string, Archive>;
 
 export default function GardenPage() {
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   const [showGrowthCard, setShowGrowthCard] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
-  const [historyMessages, setHistoryMessages] = useState<Array<{role: string, content: string}>>([]);
+  const [historyMessages, setHistoryMessages] = useState<HistoryMessage[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => new Date().getDate() - 1);
   const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(() => new Date().getMonth());
-  const [archives, setArchives] = useState<Array<{date: string, keywords: string[], mood: string, records: {今日习得: string, 逻辑突破: string, 改进点: string}, messages?: Array<{role: string, content: string}>}>>([]);
+  const [archives, setArchives] = useState<Archive[]>([]);
 
   const isCurrentViewMonth = () => {
     const now = new Date();
@@ -74,13 +85,13 @@ export default function GardenPage() {
       console.log('开始加载数据...');
       
       // 尝试多种方式获取数据
-      let storedArchives = {};
+      let storedArchives: ArchiveMap = {};
       
       // 方法1：直接从localStorage获取
       try {
         const data = localStorage.getItem('echo_archives');
         if (data) {
-          storedArchives = JSON.parse(data);
+          storedArchives = JSON.parse(data) as ArchiveMap;
           console.log('方法1成功：从localStorage获取数据');
         }
       } catch (error) {
@@ -92,7 +103,7 @@ export default function GardenPage() {
         try {
           const backupData = localStorage.getItem('echo_archives_backup');
           if (backupData) {
-            storedArchives = JSON.parse(backupData);
+            storedArchives = JSON.parse(backupData) as ArchiveMap;
             console.log('方法2成功：从备份获取数据');
             // 恢复到主存储
             localStorage.setItem('echo_archives', backupData);
@@ -111,7 +122,7 @@ export default function GardenPage() {
             if (key && key.startsWith('echo_archives')) {
               const data = localStorage.getItem(key);
               if (data) {
-                storedArchives = JSON.parse(data);
+                storedArchives = JSON.parse(data) as ArchiveMap;
                 console.log(`方法3成功：从${key}获取数据`);
                 break;
               }
@@ -126,7 +137,7 @@ export default function GardenPage() {
       console.log('GardenPage初始化: archives键的数量:', Object.keys(storedArchives).length);
       
       // 确保每个archive都有必要的字段
-      const validArchives = {};
+      const validArchives: ArchiveMap = {};
       Object.keys(storedArchives).forEach(date => {
         const archive = storedArchives[date];
         if (archive && (archive.date || archive.mood || archive.keywords)) {
@@ -162,7 +173,7 @@ export default function GardenPage() {
     };
     
     // 监听自定义事件作为备用方案
-    const handleCustomEvent = (event: CustomEvent) => {
+    const handleCustomEvent = (event: Event) => {
       console.log('GardenPage: 自定义事件触发', event);
       loadData();
     };
@@ -190,11 +201,12 @@ export default function GardenPage() {
     // 定期检查数据一致性（每5秒）
     const interval = setInterval(() => {
       const currentArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
-      const currentArray = Object.keys(currentArchives).map(date => currentArchives[date]);
-      if (currentArray.length !== archives.length) {
+      const currentArray = Object.keys(currentArchives).map(date => currentArchives[date]) as Archive[];
+      setArchives(previous => {
+        if (currentArray.length === previous.length) return previous;
         console.log('检测到数据不一致，重新加载');
-        loadData();
-      }
+        return currentArray;
+      });
     }, 5000);
     
     // 添加触摸事件监听，解决移动端刷新问题
@@ -204,7 +216,7 @@ export default function GardenPage() {
     };
     
     // 添加滚动事件监听，解决移动端滚动后数据丢失问题
-    let scrollTimeout;
+    let scrollTimeout: ReturnType<typeof setTimeout> | undefined;
     const handleScroll = () => {
       clearTimeout(scrollTimeout);
       scrollTimeout = setTimeout(() => {
@@ -248,64 +260,6 @@ export default function GardenPage() {
     setShowWeeklyReport(true);
   };
 
-  const handleSaveCard = () => {
-    // 获取当前选中的日期
-    const dateString = dateKeyForDay(selectedDate);
-    
-    // 从localStorage获取现有的归档数据
-    const allArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
-    
-    // 检查是否已有该日期的数据
-    if (allArchives[dateString]) {
-      toast('该日期已有记录，无需重复保存');
-      return;
-    }
-    
-    // 如果growthContent不存在或为null，则不保存
-    if (!growthContent) {
-      toast('无有效内容可保存');
-      return;
-    }
-    
-    // 检查是否是默认内容（没有真实记录）
-    if (growthContent.title === '这一天，你忙于奔跑，忘了给灵魂留下回声。' && 
-        (!growthContent.keywords || growthContent.keywords.length === 0)) {
-      toast('该日期无真实记录，无法保存');
-      return;
-    }
-    
-    // 创建新的归档数据
-    const newArchive = {
-      date: dateString,
-      mood: growthContent.mood || '平静',
-      keywords: growthContent.keywords || [],
-      records: {
-        今日习得: growthContent.summary?.[0] || '',
-        逻辑突破: growthContent.summary?.[1] || '',
-        改进点: growthContent.summary?.[2] || ''
-      }
-    };
-    
-    // 保存到localStorage
-    allArchives[dateString] = newArchive;
-    localStorage.setItem('echo_archives', JSON.stringify(allArchives));
-    
-    // 显示成功提示
-    toast('卡片已保存');
-    
-    // 关闭卡片显示
-    setShowGrowthCard(false);
-    
-    // 强制刷新页面以更新日历显示
-    window.location.reload();
-  };
-
-  const handleSaveWeeklyReport = () => {
-    // 周报保存逻辑 - 生成一个图片或下载功能
-    toast('周报已保存到本地');
-    setShowWeeklyReport(false);
-  };
-
   const handlePixelClick = (dayIndex: number) => {
     setSelectedDate(dayIndex);
     
@@ -318,7 +272,7 @@ export default function GardenPage() {
     const hasArchive = !!archive;
     
     // 调试信息
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log('handlePixelClick - 查找日期:', dateString);
       console.log('handlePixelClick - 所有archives:', archives);
       console.log('handlePixelClick - 找到的archive:', archive);
@@ -338,29 +292,6 @@ export default function GardenPage() {
     }
   };
 
-  const getArchiveForDay = (dayIndex: number) => {
-    // 验证dayIndex是否有效
-    if (dayIndex === null || dayIndex === undefined || isNaN(dayIndex)) {
-      return {
-        isFuture: false,
-        hasArchive: false,
-        archive: null
-      };
-    }
-    
-    const dateString = dateKeyForDay(dayIndex);
-    const isFuture = isFutureDay(dayIndex);
-    
-    // 从状态中查找归档数据
-    const archive = archives.find(a => a.date === dateString);
-    
-    return {
-      isFuture,
-      hasArchive: !!archive,
-      archive
-    };
-  };
-
   const getGrowthCardContent = (dayIndex: number) => {
     const dateString = dateKeyForDay(dayIndex);
     const isFuture = isFutureDay(dayIndex);
@@ -370,7 +301,7 @@ export default function GardenPage() {
     const hasArchive = !!archive;
     
     // 调试信息
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log('GardenPage - 查找日期:', dateString);
       console.log('GardenPage - 所有archives:', archives);
       console.log('GardenPage - 找到的archive:', archive);
@@ -408,102 +339,6 @@ export default function GardenPage() {
     }
   };
 
-  // 获取心情对应的颜色类
-  const getMoodColorClass = (mood?: string) => {
-    if (!mood) return 'text-green-800';
-    
-    if (mood.includes('积极') || mood.includes('开心')) {
-      return 'text-green-800';
-    } else if (mood.includes('焦虑') || mood.includes('压力')) {
-      return 'text-red-600';
-    } else if (mood.includes('平静') || mood.includes('专注')) {
-      return 'text-blue-600';
-    } else if (mood.includes('疲惫') || mood.includes('一般')) {
-      return 'text-yellow-600';
-    }
-    return 'text-green-800';
-  };
-
-  // 获取心情对应的文字颜色类
-  const getMoodTextColorClass = (mood?: string) => {
-    if (!mood) return 'text-green-700';
-    
-    if (mood.includes('积极') || mood.includes('开心')) {
-      return 'text-green-700';
-    } else if (mood.includes('焦虑') || mood.includes('压力')) {
-      return 'text-red-700';
-    } else if (mood.includes('平静') || mood.includes('专注')) {
-      return 'text-blue-700';
-    } else if (mood.includes('疲惫') || mood.includes('一般')) {
-      return 'text-yellow-700';
-    }
-    return 'text-green-700';
-  };
-
-  // 获取心情对应的背景颜色类
-  const getMoodBgColorClass = (mood?: string) => {
-    if (!mood) return 'bg-green-50';
-    
-    if (mood.includes('积极') || mood.includes('开心')) {
-      return 'bg-green-50';
-    } else if (mood.includes('焦虑') || mood.includes('压力')) {
-      return 'bg-red-50';
-    } else if (mood.includes('平静') || mood.includes('专注')) {
-      return 'bg-blue-50';
-    } else if (mood.includes('疲惫') || mood.includes('一般')) {
-      return 'bg-yellow-50';
-    }
-    return 'bg-green-50';
-  };
-
-  // 获取心情对应的按钮文字颜色类
-  const getMoodButtonTextColorClass = (mood?: string) => {
-    if (!mood) return 'text-green-700 hover:text-green-800';
-    
-    if (mood.includes('积极') || mood.includes('开心')) {
-      return 'text-green-700 hover:text-green-800';
-    } else if (mood.includes('焦虑') || mood.includes('压力')) {
-      return 'text-red-700 hover:text-red-800';
-    } else if (mood.includes('平静') || mood.includes('专注')) {
-      return 'text-blue-700 hover:text-blue-800';
-    } else if (mood.includes('疲惫') || mood.includes('一般')) {
-      return 'text-yellow-700 hover:text-yellow-800';
-    }
-    return 'text-green-700 hover:text-green-800';
-  };
-
-  // 获取心情对应的按钮背景颜色类
-  const getMoodButtonBgColorClass = (mood?: string) => {
-    if (!mood) return 'bg-green-50 hover:bg-green-100';
-    
-    if (mood.includes('积极') || mood.includes('开心')) {
-      return 'bg-green-50 hover:bg-green-100';
-    } else if (mood.includes('焦虑') || mood.includes('压力')) {
-      return 'bg-red-50 hover:bg-red-100';
-    } else if (mood.includes('平静') || mood.includes('专注')) {
-      return 'bg-blue-50 hover:bg-blue-100';
-    } else if (mood.includes('疲惫') || mood.includes('一般')) {
-      return 'bg-yellow-50 hover:bg-yellow-100';
-    }
-    return 'bg-green-50 hover:bg-green-100';
-  };
-
-  // 获取心情对应的边框颜色类
-  const getMoodBorderColorClass = (mood?: string) => {
-    if (!mood) return 'border-green-200';
-    
-    if (mood.includes('积极') || mood.includes('开心')) {
-      return 'border-green-200';
-    } else if (mood.includes('焦虑') || mood.includes('压力')) {
-      return 'border-red-200';
-    } else if (mood.includes('平静') || mood.includes('专注')) {
-      return 'border-blue-200';
-    } else if (mood.includes('疲惫') || mood.includes('一般')) {
-      return 'border-yellow-200';
-    }
-    return 'border-green-200';
-  };
-
   // 计算当前查看月份的统计数据
   const getMonthlyStats = () => {
     // 获取查看月份的所有日期
@@ -515,7 +350,7 @@ export default function GardenPage() {
     }
     
     // 从状态获取归档数据
-    const allArchives = {};
+    const allArchives: ArchiveMap = {};
     archives.forEach(archive => {
       allArchives[archive.date] = archive;
     });
@@ -533,7 +368,7 @@ export default function GardenPage() {
     };
     
     // 统计关键词频率
-    const keywordCounts = {};
+    const keywordCounts: Record<string, number> = {};
     
     recordedDates.forEach(date => {
       const archive = allArchives[date];
@@ -575,7 +410,7 @@ export default function GardenPage() {
       .map(([keyword]) => keyword);
     
     // 情绪对应的icon
-    const moodIcons = {
+    const moodIcons: Record<string, ReactNode> = {
       '积极开心': <TrendingUp size={16} strokeWidth={1.5} className="text-green-600" />,
       '焦虑压力': <Sparkles size={16} strokeWidth={1.5} className="text-red-400" />,
       '平静专注': <BrainCircuit size={16} strokeWidth={1.5} className="text-blue-400" />,
@@ -692,7 +527,7 @@ export default function GardenPage() {
                 const hasArchive = !!archive;
                 
                 // 仅在开发模式下且为今天时输出调试信息
-                if (process.env.NODE_ENV === 'development') {
+                if (import.meta.env.DEV) {
                   const todayString = makeDateKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
                   if (dateString === todayString) {
                     console.log('日历格子 - 查找日期:', dateString);
@@ -987,7 +822,7 @@ export default function GardenPage() {
                     firstDayOfWeek.setDate(today.getDate() - dayOfWeek + 1);
                     
                     const archives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
-                    let allRecords = [];
+                    const allRecords = [];
                     
                     // 遍历本周7天
                     for (let i = 0; i < 7; i++) {
@@ -1126,7 +961,7 @@ export default function GardenPage() {
                 <div className="mt-2 text-center">
                   <button 
                     onClick={() => {
-                      setHistoryMessages(growthContent.messages);
+                      setHistoryMessages(growthContent.messages ?? []);
                       setShowHistoryDialog(true);
                     }}
                     className={`text-xs transition-colors ${mood.accent} hover:opacity-80`}

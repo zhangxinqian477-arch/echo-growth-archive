@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Sparkles, Sprout, Settings, BarChart3, Loader2 } from 'lucide-react';
-import { generateReflection, summarizeToArchive } from '../lib/aiService';
+import { X, Sparkles, Sprout, Settings, Loader2 } from 'lucide-react';
+import { summarizeToArchive } from '../lib/aiService';
 import { toast } from 'sonner';
 import { getDateKey } from '../utils/dateUtils';
 import { getMoodSurface } from '../utils/moodStyles';
@@ -124,6 +124,11 @@ async function getChatResponse(userMessage: string, conversationHistory: Array<{
   }
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 export default function ChatPage() {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Array<{id: number, role: 'user' | 'assistant', content: string, timestamp?: string}>>([
@@ -132,8 +137,7 @@ export default function ChatPage() {
   const [showGrowthCard, setShowGrowthCard] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
-  const [showGenerateButton, setShowGenerateButton] = useState(false);
-  const [growthContent, setGrowthContent] = useState({
+  const [growthContent] = useState({
     mood: '能量翠绿',
     keywords: ['学习', '成长', '组件库'],
     reflections: [
@@ -280,24 +284,18 @@ export default function ChatPage() {
     const text = (overrideText ?? message).trim();
     if (text === '') return;
     
-    // 生成卡片：直接开生成，并保证出现可再次打开的按钮
-    if (text.includes('生成卡片') || text.includes('生成回声')) {
+    // 卡片指令由前端直接处理，不进入普通 AI 对话。
+    const isCardGenerationCommand = /生成(?:今日)?(?:卡片|回声)/.test(text);
+    if (isCardGenerationCommand) {
       const userMessage = {
         id: messages.length + 1,
         role: 'user' as const,
         content: text,
         timestamp: new Date().toISOString()
       };
-      const assistantMessage = {
-        id: messages.length + 2,
-        role: 'assistant' as const,
-        content: '好的，正在为你生成今日成长回声…',
-        timestamp: new Date().toISOString()
-      };
       const conversationForArchive = [...messages, userMessage];
-      setMessages([...conversationForArchive, assistantMessage]);
+      setMessages(conversationForArchive);
       setMessage('');
-      setShowGenerateEchoButton(true);
 
       setTimeout(() => {
         if (messagesEndRef.current) {
@@ -305,21 +303,7 @@ export default function ChatPage() {
         }
       }, 100);
 
-      void (async () => {
-        const ok = await handleGenerateCard(conversationForArchive);
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id === assistantMessage.id
-              ? {
-                  ...msg,
-                  content: ok
-                    ? '今日成长回声已生成。你可以点击下方按钮再次查看。'
-                    : '生成遇到一点问题，你可以再点下方按钮重试。'
-                }
-              : msg
-          )
-        );
-      })();
+      void handleGenerateCard(conversationForArchive);
       return;
     }
     
@@ -379,7 +363,7 @@ export default function ChatPage() {
       
       // 不再添加系统提示消息，直接显示按钮
     } catch (error) {
-    console.error('Full Error:', error.response?.data || error.message);
+    console.error('Full Error:', getErrorMessage(error));
     
     // 移除思考消息
     setMessages(prev => 
@@ -482,71 +466,13 @@ export default function ChatPage() {
       }, 0);
       return true;
     } catch (error) {
-      console.error('Full Error:', error.response?.data || error.message);
+      console.error('Full Error:', getErrorMessage(error));
       setTimeout(() => {
         toast.error('AI分析失败，请稍后再试');
       }, 0);
       return false;
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleSaveToArchive = async () => {
-    try {
-      // 调用summarizeToArchive函数
-      const archiveData = await summarizeToArchive(messages.map(m => ({ role: m.role, content: m.content })));
-      
-      // 强制使用今日日期，严禁让AI自行生成日期
-      const dateString = getDateKey();
-      console.log('handleSaveToArchive - 使用的日期:', dateString);
-      
-      // 从localStorage获取现有的归档数据（使用对象格式，与GardenPage保持一致）
-      const existingArchives = JSON.parse(localStorage.getItem('echo_archives') || '{}');
-      
-      // 以日期为Key存储
-      existingArchives[dateString] = archiveData;
-      
-      // 保存回localStorage
-      localStorage.setItem('echo_archives', JSON.stringify(existingArchives));
-      
-      // 强制再次保存，确保数据写入
-      setTimeout(() => {
-        localStorage.setItem('echo_archives', JSON.stringify(existingArchives));
-        console.log('二次保存完成');
-      }, 100);
-      
-      // 创建并触发自定义事件，确保同一页面内的组件能接收到通知
-      try {
-        const storageEvent = new StorageEvent('storage', {
-          key: 'echo_archives',
-          newValue: JSON.stringify(existingArchives),
-          oldValue: localStorage.getItem('echo_archives'),
-          storageArea: localStorage
-        });
-        window.dispatchEvent(storageEvent);
-        console.log('已触发storage事件，通知花园页面更新');
-      } catch (error) {
-        console.error('触发storage事件失败:', error);
-        // 备用方案：使用自定义事件
-        const customEvent = new CustomEvent('echo_archives_updated', {
-          detail: { archives: existingArchives }
-        });
-        window.dispatchEvent(customEvent);
-      }
-      
-      // 显示成功提示
-      setTimeout(() => {
-        toast.success('回声已保存到心灵花园');
-      }, 0);
-      
-      // 关闭卡片
-      setShowGrowthCard(false);
-    } catch (error) {
-      console.error('保存归档失败:', error);
-      setTimeout(() => {
-        toast.error('保存失败，请稍后再试');
-      }, 0);
     }
   };
 
@@ -589,7 +515,7 @@ export default function ChatPage() {
           // 检查是否需要显示时间分割线
           const showMessageDate = index === 0 || 
             (msg.timestamp && messages[index - 1]?.timestamp && 
-             new Date(msg.timestamp).toDateString() !== new Date(messages[index - 1].timestamp).toDateString());
+             new Date(msg.timestamp).toDateString() !== new Date(messages[index - 1]!.timestamp!).toDateString());
           
           return (
             <div key={msg.id}>
@@ -642,7 +568,7 @@ export default function ChatPage() {
                   {msg.role === 'assistant' && index === messages.length - 1 && showGenerateEchoButton && (
                     <div className="mt-4 flex justify-center">
                       <button 
-                        onClick={handleGenerateCard}
+                        onClick={() => void handleGenerateCard()}
                         disabled={isLoading}
                         className="flex items-center gap-2 border-2 border-green-600 bg-green-50 text-green-700 px-4 py-2 rounded-full hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
